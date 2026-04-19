@@ -10,6 +10,7 @@
 #ifndef LIBIOP_ALGEBRA_FFT_HPP_
 #define LIBIOP_ALGEBRA_FFT_HPP_
 
+#include <cstdint>
 #include <vector>
 
 #include "libiop/algebra/field_subset/field_subset.hpp"
@@ -18,6 +19,30 @@
 #include <libff/common/utils.hpp>
 
 namespace libiop {
+
+/** When the evaluation domain uses the Cantor special basis, additive_FFT_wrapper
+ *  can call either the LCH implementation or cantor:: (depends/additive-fft/C++/Cantor).
+ *  Default is LCH. Benchmarks may switch per thread without recompiling. */
+enum class additive_fft_cantor_implementation : std::uint8_t {
+    lch = 0,
+    cantor_lib = 1,
+};
+
+inline additive_fft_cantor_implementation &additive_fft_cantor_impl_storage()
+{
+    thread_local additive_fft_cantor_implementation v = additive_fft_cantor_implementation::lch;
+    return v;
+}
+
+inline void set_additive_fft_cantor_implementation(additive_fft_cantor_implementation impl)
+{
+    additive_fft_cantor_impl_storage() = impl;
+}
+
+inline additive_fft_cantor_implementation get_additive_fft_cantor_implementation()
+{
+    return additive_fft_cantor_impl_storage();
+}
 
 /* Performs naive computation of the polynomial evaluation
    problem. Mostly useful for testing. */

@@ -8,7 +8,9 @@
 #include "libiop/snark/aurora_snark.hpp"
 #include "libiop/relations/examples/r1cs_examples.hpp"
 #include "libiop/bcs/hashing/hashing.hpp"
+#include "libiop/algebra/fft.hpp"
 
+/* Cantor-basis rows: set_additive_fft_cantor_implementation(lch|cantor_lib); see FFT_benchmark_column_mapping.txt */
 
 namespace libiop {
 
@@ -54,7 +56,7 @@ static void BM_AURORA_PROVER_PRIME_FIELD(benchmark::State &state)
 
 // ######## BINARY EXTENSION FIELD ########
 
-static void BM_AURORA_PROVER_CANTOR_BASIS(benchmark::State &state)
+static void BM_AURORA_PROVER_CANTOR_BASIS_LCH(benchmark::State &state)
 {
     typedef libff::gf256 FieldT;
     const field_subset_type domain_type = affine_subspace_type;
@@ -70,6 +72,8 @@ static void BM_AURORA_PROVER_CANTOR_BASIS(benchmark::State &state)
             fri_soundness_type, blake2b_type, FRI_localization_parameter, RS_extra_dimensions,
             make_zk, domain_type, is_cantor_basis,  num_constraints, num_variables);
     aurora_snark_argument<FieldT, hash_type> argument;
+    set_additive_fft_cantor_implementation(additive_fft_cantor_implementation::lch);
+    state.counters["cantor_fft_impl"] = static_cast<double>(additive_fft_cantor_implementation::lch);
     for (auto _ : state)
     {
         benchmark::DoNotOptimize(r1cs_params);
@@ -82,8 +86,7 @@ static void BM_AURORA_PROVER_CANTOR_BASIS(benchmark::State &state)
     state.counters["codeword_dim"] = params.iop_params_.codeword_domain_dim();
 }
 
-
-static void BM_AURORA_VERIFIER_CANTOR_BASIS(benchmark::State &state)
+static void BM_AURORA_PROVER_CANTOR_BASIS_CANTOR_LIB(benchmark::State &state)
 {
     typedef libff::gf256 FieldT;
     const field_subset_type domain_type = affine_subspace_type;
@@ -98,8 +101,78 @@ static void BM_AURORA_VERIFIER_CANTOR_BASIS(benchmark::State &state)
     aurora_snark_parameters<FieldT, hash_type> params( security_parameter, ldt_reducer_soundness_type,
             fri_soundness_type, blake2b_type, FRI_localization_parameter, RS_extra_dimensions,
             make_zk, domain_type, is_cantor_basis,  num_constraints, num_variables);
+    aurora_snark_argument<FieldT, hash_type> argument;
+    set_additive_fft_cantor_implementation(additive_fft_cantor_implementation::cantor_lib);
+    state.counters["cantor_fft_impl"] = static_cast<double>(additive_fft_cantor_implementation::cantor_lib);
+    for (auto _ : state)
+    {
+        benchmark::DoNotOptimize(r1cs_params);
+        benchmark::DoNotOptimize(params);
+        benchmark::DoNotOptimize(argument = aurora_snark_prover<FieldT>(r1cs_params.constraint_system_, 
+                                    r1cs_params.primary_input_, r1cs_params.auxiliary_input_, params));
+        benchmark::ClobberMemory();
+    }
+    state.SetItemsProcessed(state.iterations());
+    state.counters["codeword_dim"] = params.iop_params_.codeword_domain_dim();
+}
+
+
+static void BM_AURORA_VERIFIER_CANTOR_BASIS_LCH(benchmark::State &state)
+{
+    typedef libff::gf256 FieldT;
+    const field_subset_type domain_type = affine_subspace_type;
+    const bool is_cantor_basis = true;
+    const size_t sz = state.range(0);
+    const std::size_t num_constraints = 1 << sz;
+    const std::size_t num_variables = (1 << sz) - 1;
+
+    r1cs_example<FieldT> r1cs_params = generate_r1cs_example<FieldT>(
+        num_constraints, num_inputs, num_variables);
+
+    aurora_snark_parameters<FieldT, hash_type> params( security_parameter, ldt_reducer_soundness_type,
+            fri_soundness_type, blake2b_type, FRI_localization_parameter, RS_extra_dimensions,
+            make_zk, domain_type, is_cantor_basis,  num_constraints, num_variables);
+    set_additive_fft_cantor_implementation(additive_fft_cantor_implementation::lch);
     aurora_snark_argument<FieldT, hash_type> argument = aurora_snark_prover<FieldT>(r1cs_params.constraint_system_, 
                                     r1cs_params.primary_input_, r1cs_params.auxiliary_input_, params);
+    state.counters["cantor_fft_impl"] = static_cast<double>(additive_fft_cantor_implementation::lch);
+    bool bit;
+    for (auto _ : state)
+    {
+        benchmark::DoNotOptimize(r1cs_params);
+        benchmark::DoNotOptimize(params);
+        benchmark::DoNotOptimize(bit = aurora_snark_verifier<FieldT, hash_type>( r1cs_params.constraint_system_,
+                                                            r1cs_params.primary_input_, argument, params));
+        benchmark::ClobberMemory();
+        
+        if (!bit){
+            throw std::invalid_argument("Verification Failed");
+        }
+
+    }
+    state.SetItemsProcessed(state.iterations());
+    state.counters["codeword_dim"] = params.iop_params_.codeword_domain_dim();
+}
+
+static void BM_AURORA_VERIFIER_CANTOR_BASIS_CANTOR_LIB(benchmark::State &state)
+{
+    typedef libff::gf256 FieldT;
+    const field_subset_type domain_type = affine_subspace_type;
+    const bool is_cantor_basis = true;
+    const size_t sz = state.range(0);
+    const std::size_t num_constraints = 1 << sz;
+    const std::size_t num_variables = (1 << sz) - 1;
+
+    r1cs_example<FieldT> r1cs_params = generate_r1cs_example<FieldT>(
+        num_constraints, num_inputs, num_variables);
+
+    aurora_snark_parameters<FieldT, hash_type> params( security_parameter, ldt_reducer_soundness_type,
+            fri_soundness_type, blake2b_type, FRI_localization_parameter, RS_extra_dimensions,
+            make_zk, domain_type, is_cantor_basis,  num_constraints, num_variables);
+    set_additive_fft_cantor_implementation(additive_fft_cantor_implementation::cantor_lib);
+    aurora_snark_argument<FieldT, hash_type> argument = aurora_snark_prover<FieldT>(r1cs_params.constraint_system_, 
+                                    r1cs_params.primary_input_, r1cs_params.auxiliary_input_, params);
+    state.counters["cantor_fft_impl"] = static_cast<double>(additive_fft_cantor_implementation::cantor_lib);
     bool bit;
     for (auto _ : state)
     {
@@ -183,8 +256,10 @@ static void BM_AURORA_VERIFIER_STANDARD_BASIS(benchmark::State &state)
 }
 
 // BENCHMARK(BM_AURORA_PROVER_PRIME_FIELD)->DenseRange(5, 18, 1)->Unit(benchmark::kMillisecond)->ReportAggregatesOnly(true);
-BENCHMARK(BM_AURORA_PROVER_CANTOR_BASIS)->DenseRange(9, 19, 1)->Unit(benchmark::kMillisecond)->ReportAggregatesOnly(true);
-BENCHMARK(BM_AURORA_VERIFIER_CANTOR_BASIS)->DenseRange(9, 19, 1)->Unit(benchmark::kMillisecond)->ReportAggregatesOnly(true);
+BENCHMARK(BM_AURORA_PROVER_CANTOR_BASIS_LCH)->DenseRange(9, 19, 1)->Unit(benchmark::kMillisecond)->ReportAggregatesOnly(true);
+BENCHMARK(BM_AURORA_PROVER_CANTOR_BASIS_CANTOR_LIB)->DenseRange(9, 19, 1)->Unit(benchmark::kMillisecond)->ReportAggregatesOnly(true);
+BENCHMARK(BM_AURORA_VERIFIER_CANTOR_BASIS_LCH)->DenseRange(9, 19, 1)->Unit(benchmark::kMillisecond)->ReportAggregatesOnly(true);
+BENCHMARK(BM_AURORA_VERIFIER_CANTOR_BASIS_CANTOR_LIB)->DenseRange(9, 19, 1)->Unit(benchmark::kMillisecond)->ReportAggregatesOnly(true);
 BENCHMARK(BM_AURORA_PROVER_STANDARD_BASIS)->DenseRange(9, 15, 5)->Unit(benchmark::kMillisecond)->ReportAggregatesOnly(true);
 BENCHMARK(BM_AURORA_VERIFIER_STANDARD_BASIS)->DenseRange(9, 15, 5)->Unit(benchmark::kMillisecond)->ReportAggregatesOnly(true);
 
@@ -193,4 +268,5 @@ BENCHMARK(BM_AURORA_VERIFIER_STANDARD_BASIS)->DenseRange(9, 15, 5)->Unit(benchma
 
 BENCHMARK_MAIN();
 
-//./libiop/benchmark_aurora --benchmark_repetitions=100 --benchmark_out=lch_gm.json --benchmark_out_format=json
+// Example: Cantor-basis LCH + cantor:: only:
+//   ./benchmark_aurora --benchmark_filter='BM_AURORA_(PROVER|VERIFIER)_CANTOR_BASIS_.*'

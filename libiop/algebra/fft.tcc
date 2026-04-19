@@ -206,6 +206,9 @@ std::vector<FieldT> additive_IFFT(const std::vector<FieldT> &evals,
     return S;
 }
 
+/** Additive FFT dispatch: standard affine subspace uses Gao–Mateer (additive_FFT);
+ *  Cantor special basis uses lch:: or cantor:: per get_additive_fft_cantor_implementation().
+ *  See libiop/benchmarks/FFT_benchmark_column_mapping.txt. */
 template<typename FieldT>
 std::vector<FieldT> additive_FFT_wrapper(const std::vector<FieldT> &v,
                                          const affine_subspace<FieldT> &H)
@@ -234,8 +237,16 @@ std::vector<FieldT> additive_FFT_wrapper(const std::vector<FieldT> &v,
     }
 
     if(H.is_cantor_basis()){
-        libff::print_indent(); printf("* Using the Cantor FFT\n");
-        result = cantor::additive_FFT(v, H.dimension(), H.shift() == FieldT::zero() ? 0 : h_dim);
+        if (get_additive_fft_cantor_implementation() == additive_fft_cantor_implementation::cantor_lib)
+        {
+            libff::print_indent(); printf("* Using cantor:: additive FFT (Cantor evaluation basis)\n");
+            result = cantor::additive_FFT(v, H);
+        }
+        else
+        {
+            libff::print_indent(); printf("* Using the LCH additive FFT (Cantor evaluation basis)\n");
+            result = lch::additive_FFT(v, H.dimension(), H.shift() == FieldT::zero() ? 0 : h_dim);
+        }
     }
     else
         result = additive_FFT(v, H);
@@ -270,8 +281,16 @@ std::vector<FieldT> additive_IFFT_wrapper(const std::vector<FieldT> &v,
     }
     std::vector<FieldT> result; 
     if(H.is_cantor_basis()){
-        libff::print_indent(); printf("* Using the Cantor IFFT\n");
-        result = cantor::additive_IFFT(v, H.dimension(), h_dim);
+        if (get_additive_fft_cantor_implementation() == additive_fft_cantor_implementation::cantor_lib)
+        {
+            libff::print_indent(); printf("* Using cantor:: additive IFFT (Cantor evaluation basis)\n");
+            result = cantor::additive_IFFT(v, H);
+        }
+        else
+        {
+            libff::print_indent(); printf("* Using the LCH additive IFFT (Cantor evaluation basis)\n");
+            result = lch::additive_IFFT(v, H.dimension(), h_dim);
+        }
     }
     else
         result = additive_IFFT(v, H);

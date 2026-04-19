@@ -14,7 +14,7 @@
 #include <libff/algebra/fields/binary/gf192.hpp>
 #include <libff/algebra/fields/binary/gf256.hpp>
 #include <libff/algebra/field_utils/field_utils.hpp>
-
+#include <libff/common/profiling.hpp>
 
 #include "boost_profile.cpp"
 #include "libiop/snark/aurora_snark.hpp"
@@ -279,4 +279,6 @@ int main(int argc, const char * argv[])
                 throw std::invalid_argument("Field size not supported.");
         }
     }
+
+    libff::print_cumulative_times();
 }

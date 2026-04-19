@@ -1,0 +1,106 @@
+FFT / SNARK benchmark column mapping (reproducibility)
+========================================================
+
+Git commit at the time this file was added (update when publishing):
+  500127dfad0cf736263661fef03b582d8dbb7162
+
+Purpose
+-------
+Relate paper-style columns (Gao–Mateer / Cantor library / LCH) to this
+repository’s benchmarks and to additive_FFT_wrapper dispatch.
+
+1) Code path for additive FFT (authoritative)
+---------------------------------------------
+Files: libiop/algebra/fft.hpp, libiop/algebra/fft.tcc
+
+  - FFT_over_field_subset / additive_FFT_wrapper:
+      * If the evaluation domain’s affine subspace has is_cantor_basis() == false:
+          → libiop::additive_FFT / additive_IFFT  (Gao–Mateer on a standard basis)
+      * If is_cantor_basis() == true:
+          → chosen by thread-local get_additive_fft_cantor_implementation():
+              - additive_fft_cantor_implementation::lch (default)
+                  → lch::additive_FFT / lch::additive_IFFT
+              - additive_fft_cantor_implementation::cantor_lib
+                  → cantor::additive_FFT / cantor::additive_IFFT
+                    (depends/additive-fft/C++/Cantor)
+
+  Use set_additive_fft_cantor_implementation(...) before running code on that
+  thread (benchmarks set it per registered BM_* function).
+
+2) Google Benchmark binaries (libiop/CMakeLists.txt)
+-----------------------------------------------------
+benchmark_ligero (libiop/benchmarks/benchmark_ligero.cpp):
+
+  BM_LIGERO_PROVER_STANDARD_BASIS / BM_LIGERO_VERIFIER_STANDARD_BASIS
+      is_cantor_basis_ = false  →  GM column (Gao–Mateer, standard basis)
+
+  BM_LIGERO_PROVER_CANTOR_BASIS_LCH / BM_LIGERO_VERIFIER_CANTOR_BASIS_LCH
+      is_cantor_basis_ = true, implementation = lch  →  LCH column
+
+  BM_LIGERO_PROVER_CANTOR_BASIS_CANTOR_LIB / BM_LIGERO_VERIFIER_CANTOR_BASIS_CANTOR_LIB
+      is_cantor_basis_ = true, implementation = cantor_lib  →  Cantor:: column
+
+benchmark_aurora (libiop/benchmarks/benchmark_aurora.cpp):
+
+  BM_AURORA_PROVER_STANDARD_BASIS / BM_AURORA_VERIFIER_STANDARD_BASIS
+      is_cantor_basis = false   →  GM column
+
+  BM_AURORA_PROVER_CANTOR_BASIS_LCH / BM_AURORA_VERIFIER_CANTOR_BASIS_LCH
+      is_cantor_basis = true, implementation = lch
+
+  BM_AURORA_PROVER_CANTOR_BASIS_CANTOR_LIB / BM_AURORA_VERIFIER_CANTOR_BASIS_CANTOR_LIB
+      is_cantor_basis = true, implementation = cantor_lib
+
+Counters: cantor_fft_impl is 0.0 for lch and 1.0 for cantor_lib.
+
+3) Three columns in a publication vs this repo
+----------------------------------------------
+One build of benchmark_ligero / benchmark_aurora can run GM, LCH, and cantor::
+rows in a single invocation (all registered benchmarks). No recompile is required
+to switch between lch and cantor_lib.
+
+4) Profiling FFT vs other prover work (optional)
+-------------------------------------------------
+The instrument_* binaries call libff::start_profiling() and use enter_block /
+leave_block throughout the library. instrument_ligero_snark and instrument_aurora_snark
+call libff::print_cumulative_times() at normal program exit so block totals are
+printed automatically. Search the output for blocks such as:
+
+  "Call to additive_FFT_wrapper"
+  "Call to additive_IFFT_wrapper"
+
+Compare their totals to other blocks (hashing, IOP rounds) to see how much of
+the prover is FFT-dominated.
+
+Note: profiling/instrument_ligero_snark.cpp does not set is_cantor_basis_;
+it defaults to false (GM path). For Cantor-basis profiling, use the benchmark
+binaries or extend the instrument tool to set is_cantor_basis_ and call
+set_additive_fft_cantor_implementation.
+
+Example (after building):
+
+  ./libiop/instrument_ligero_snark --log_n_min 9 --log_n_max 9 \\
+      --field_size 256 --is_multiplicative false --make_zk true
+
+Adjust flags to match your benchmark settings (security_level, RS dimensions,
+etc.).
+
+5) One-shot run on a workstation or remote server
+--------------------------------------------------
+From the repository root (after building `benchmark_ligero` and `benchmark_aurora`):
+
+  libiop/benchmarks/run_snark_benchmarks.sh
+
+Environment variables (all optional):
+
+  BUILD_DIR   CMake build directory (default: <repo>/build)
+  OUT_DIR     Where to write ligero.json and aurora.json (default: benchmark_results/<UTC-timestamp>/)
+  BENCHMARK_REPETITIONS  (default: 100)
+
+Pass extra Google Benchmark flags before "--", or only to both binaries after "--":
+
+  OUT_DIR=./my_run BENCHMARK_REPETITIONS=50 libiop/benchmarks/run_snark_benchmarks.sh
+  libiop/benchmarks/run_snark_benchmarks.sh -- --benchmark_filter='.*CANTOR_BASIS_.*'
+
+For reproducible numbers on a remote machine, pin the compiler, CMAKE_BUILD_TYPE,
+and CPU frequency governor; keep the same BUILD_DIR layout when comparing commits.

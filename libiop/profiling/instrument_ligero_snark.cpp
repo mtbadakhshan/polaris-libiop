@@ -12,6 +12,7 @@
 #include "boost_profile.cpp"
 #include <libff/algebra/curves/edwards/edwards_pp.hpp>
 #include <libff/algebra/curves/alt_bn128/alt_bn128_pp.hpp>
+#include <libff/common/profiling.hpp>
 
 #include <libff/algebra/fields/binary/gf64.hpp>
 #include <libff/algebra/fields/binary/gf256.hpp>
@@ -227,4 +228,6 @@ int main(int argc, const char * argv[])
                 throw std::invalid_argument("Field size not supported.");
         }
     }
+
+    libff::print_cumulative_times();
 }

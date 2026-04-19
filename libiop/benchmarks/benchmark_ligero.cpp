@@ -9,7 +9,10 @@
 #include "libiop/bcs/common_bcs_parameters.hpp"
 #include "libiop/relations/examples/r1cs_examples.hpp"
 #include "libiop/bcs/hashing/hashing.hpp"
+#include "libiop/algebra/fft.hpp"
 
+/* Column ↔ code mapping: FFT_benchmark_column_mapping.txt
+ *   Cantor-basis rows: set_additive_fft_cantor_implementation(lch|cantor_lib) before the timed loop. */
 
 namespace libiop {
 
@@ -36,7 +39,7 @@ static void BM_LIGERO_PROVER_PRIME_FIELD(benchmark::State &state)
     r1cs_example<FieldT> r1cs_params = generate_r1cs_example<FieldT>(
         num_constraints, num_inputs, num_variables);
 
-        ligero_snark_parameters<FieldT, hash_type> parameters;
+    ligero_snark_parameters<FieldT, hash_type> parameters;
         parameters.security_level_ = security_parameter;
         parameters.height_width_ratio_ = height_width_ratio;
         parameters.RS_extra_dimensions_ = RS_extra_dimensions;
@@ -70,10 +73,9 @@ static void BM_LIGERO_PROVER_PRIME_FIELD(benchmark::State &state)
 
 // ######## BINARY EXTENSION FIELD ########
 
-static void BM_LIGERO_PROVER_CANTOR_BASIS(benchmark::State &state)
+static void BM_LIGERO_PROVER_CANTOR_BASIS_LCH(benchmark::State &state)
 {
     typedef libff::gf256 FieldT;
-    const field_subset_type domain_type = affine_subspace_type;
     const bool is_cantor_basis = true;
     const size_t sz = state.range(0);
     std::size_t constraint_dim = sz;
@@ -95,6 +97,8 @@ static void BM_LIGERO_PROVER_CANTOR_BASIS(benchmark::State &state)
             blake2b_type, parameters.security_level_, constraint_dim);
 
     ligero_snark_argument<FieldT, hash_type> argument;
+    set_additive_fft_cantor_implementation(additive_fft_cantor_implementation::lch);
+    state.counters["cantor_fft_impl"] = static_cast<double>(additive_fft_cantor_implementation::lch);
     for (auto _ : state)
     {
         benchmark::DoNotOptimize(r1cs_params);
@@ -106,7 +110,6 @@ static void BM_LIGERO_PROVER_CANTOR_BASIS(benchmark::State &state)
     state.SetItemsProcessed(state.iterations());
     const bool bit = ligero_snark_verifier<FieldT, binary_hash_digest>(r1cs_params.constraint_system_, r1cs_params.primary_input_, argument, parameters);
     if (!bit){
-        //throw exception
         throw std::invalid_argument("Verification Failed");
     }
     ligero_iop_parameters<FieldT> iop_params = 
@@ -116,10 +119,9 @@ static void BM_LIGERO_PROVER_CANTOR_BASIS(benchmark::State &state)
     state.counters["codeword_domain_dim"] = iop_params.systematic_domain_dim() + iop_params.RS_extra_dimensions();
 }
 
-static void BM_LIGERO_VERIFIER_CANTOR_BASIS(benchmark::State &state)
+static void BM_LIGERO_PROVER_CANTOR_BASIS_CANTOR_LIB(benchmark::State &state)
 {
     typedef libff::gf256 FieldT;
-    const field_subset_type domain_type = affine_subspace_type;
     const bool is_cantor_basis = true;
     const size_t sz = state.range(0);
     std::size_t constraint_dim = sz;
@@ -140,8 +142,102 @@ static void BM_LIGERO_VERIFIER_CANTOR_BASIS(benchmark::State &state)
         parameters.bcs_params_ = default_bcs_params<FieldT, binary_hash_digest>(
             blake2b_type, parameters.security_level_, constraint_dim);
 
+    ligero_snark_argument<FieldT, hash_type> argument;
+    set_additive_fft_cantor_implementation(additive_fft_cantor_implementation::cantor_lib);
+    state.counters["cantor_fft_impl"] = static_cast<double>(additive_fft_cantor_implementation::cantor_lib);
+    for (auto _ : state)
+    {
+        benchmark::DoNotOptimize(r1cs_params);
+        benchmark::DoNotOptimize(parameters);
+        benchmark::DoNotOptimize(argument = ligero_snark_prover<FieldT>(r1cs_params.constraint_system_, 
+                                    r1cs_params.primary_input_, r1cs_params.auxiliary_input_, parameters));
+        benchmark::ClobberMemory();
+    }
+    state.SetItemsProcessed(state.iterations());
+    const bool bit = ligero_snark_verifier<FieldT, binary_hash_digest>(r1cs_params.constraint_system_, r1cs_params.primary_input_, argument, parameters);
+    if (!bit){
+        throw std::invalid_argument("Verification Failed");
+    }
+    ligero_iop_parameters<FieldT> iop_params = 
+                        obtain_iop_parameters_from_ligero_snark_params(parameters, num_constraints, num_variables);
+
+    state.counters["systematic_domain_dim"] = iop_params.systematic_domain_dim();
+    state.counters["codeword_domain_dim"] = iop_params.systematic_domain_dim() + iop_params.RS_extra_dimensions();
+}
+
+static void BM_LIGERO_VERIFIER_CANTOR_BASIS_LCH(benchmark::State &state)
+{
+    typedef libff::gf256 FieldT;
+    const bool is_cantor_basis = true;
+    const size_t sz = state.range(0);
+    std::size_t constraint_dim = sz;
+    const std::size_t num_constraints = 1 << sz;
+    const std::size_t num_variables = (1 << sz) - 1;
+
+    r1cs_example<FieldT> r1cs_params = generate_r1cs_example<FieldT>(
+        num_constraints, num_inputs, num_variables);
+    
+    ligero_snark_parameters<FieldT, hash_type> parameters;
+        parameters.security_level_ = security_parameter;
+        parameters.height_width_ratio_ = height_width_ratio;
+        parameters.RS_extra_dimensions_ = RS_extra_dimensions;
+        parameters.make_zk_ = make_zk;
+        parameters.domain_type_ = affine_subspace_type;
+        parameters.is_cantor_basis_ = is_cantor_basis;
+        parameters.LDT_reducer_soundness_type_ = LDT_reducer_soundness_type::proven;
+        parameters.bcs_params_ = default_bcs_params<FieldT, binary_hash_digest>(
+            blake2b_type, parameters.security_level_, constraint_dim);
+
+    set_additive_fft_cantor_implementation(additive_fft_cantor_implementation::lch);
     ligero_snark_argument<FieldT, hash_type> argument = ligero_snark_prover<FieldT>(r1cs_params.constraint_system_, 
                                     r1cs_params.primary_input_, r1cs_params.auxiliary_input_, parameters);
+    state.counters["cantor_fft_impl"] = static_cast<double>(additive_fft_cantor_implementation::lch);
+    bool bit;
+                                    
+    for (auto _ : state)
+    {
+        benchmark::DoNotOptimize(r1cs_params);
+        benchmark::DoNotOptimize(parameters);
+        benchmark::DoNotOptimize(bit = ligero_snark_verifier<FieldT, binary_hash_digest>(r1cs_params.constraint_system_, r1cs_params.primary_input_, argument, parameters));
+        benchmark::ClobberMemory();
+        if (!bit){
+            throw std::invalid_argument("Verification Failed");
+        }
+    }
+    state.SetItemsProcessed(state.iterations());
+    ligero_iop_parameters<FieldT> iop_params = 
+                        obtain_iop_parameters_from_ligero_snark_params(parameters, num_constraints, num_variables);
+    state.counters["systematic_domain_dim"] = iop_params.systematic_domain_dim();
+    state.counters["codeword_domain_dim"] = iop_params.systematic_domain_dim() + iop_params.RS_extra_dimensions();
+}
+
+static void BM_LIGERO_VERIFIER_CANTOR_BASIS_CANTOR_LIB(benchmark::State &state)
+{
+    typedef libff::gf256 FieldT;
+    const bool is_cantor_basis = true;
+    const size_t sz = state.range(0);
+    std::size_t constraint_dim = sz;
+    const std::size_t num_constraints = 1 << sz;
+    const std::size_t num_variables = (1 << sz) - 1;
+
+    r1cs_example<FieldT> r1cs_params = generate_r1cs_example<FieldT>(
+        num_constraints, num_inputs, num_variables);
+    
+    ligero_snark_parameters<FieldT, hash_type> parameters;
+        parameters.security_level_ = security_parameter;
+        parameters.height_width_ratio_ = height_width_ratio;
+        parameters.RS_extra_dimensions_ = RS_extra_dimensions;
+        parameters.make_zk_ = make_zk;
+        parameters.domain_type_ = affine_subspace_type;
+        parameters.is_cantor_basis_ = is_cantor_basis;
+        parameters.LDT_reducer_soundness_type_ = LDT_reducer_soundness_type::proven;
+        parameters.bcs_params_ = default_bcs_params<FieldT, binary_hash_digest>(
+            blake2b_type, parameters.security_level_, constraint_dim);
+
+    set_additive_fft_cantor_implementation(additive_fft_cantor_implementation::cantor_lib);
+    ligero_snark_argument<FieldT, hash_type> argument = ligero_snark_prover<FieldT>(r1cs_params.constraint_system_, 
+                                    r1cs_params.primary_input_, r1cs_params.auxiliary_input_, parameters);
+    state.counters["cantor_fft_impl"] = static_cast<double>(additive_fft_cantor_implementation::cantor_lib);
     bool bit;
                                     
     for (auto _ : state)
@@ -254,9 +350,11 @@ static void BM_LIGERO_VERIFIER_STANDARD_BASIS(benchmark::State &state)
 }
 
 
-BENCHMARK(BM_LIGERO_PROVER_PRIME_FIELD)->DenseRange(9, 20, 1)->Unit(benchmark::kMillisecond)->ReportAggregatesOnly(true);
-BENCHMARK(BM_LIGERO_PROVER_CANTOR_BASIS)->DenseRange(9, 20, 1)->Unit(benchmark::kMillisecond)->ReportAggregatesOnly(true);
-BENCHMARK(BM_LIGERO_VERIFIER_CANTOR_BASIS)->DenseRange(9, 20, 1)->Unit(benchmark::kMillisecond)->ReportAggregatesOnly(true);
+// BENCHMARK(BM_LIGERO_PROVER_PRIME_FIELD)->DenseRange(9, 20, 1)->Unit(benchmark::kMillisecond)->ReportAggregatesOnly(true);
+BENCHMARK(BM_LIGERO_PROVER_CANTOR_BASIS_LCH)->DenseRange(9, 20, 1)->Unit(benchmark::kMillisecond)->ReportAggregatesOnly(true);
+BENCHMARK(BM_LIGERO_PROVER_CANTOR_BASIS_CANTOR_LIB)->DenseRange(9, 20, 1)->Unit(benchmark::kMillisecond)->ReportAggregatesOnly(true);
+BENCHMARK(BM_LIGERO_VERIFIER_CANTOR_BASIS_LCH)->DenseRange(9, 20, 1)->Unit(benchmark::kMillisecond)->ReportAggregatesOnly(true);
+BENCHMARK(BM_LIGERO_VERIFIER_CANTOR_BASIS_CANTOR_LIB)->DenseRange(9, 20, 1)->Unit(benchmark::kMillisecond)->ReportAggregatesOnly(true);
 BENCHMARK(BM_LIGERO_PROVER_STANDARD_BASIS)->DenseRange(9, 20, 1)->Unit(benchmark::kMillisecond)->ReportAggregatesOnly(true);
 BENCHMARK(BM_LIGERO_VERIFIER_STANDARD_BASIS)->DenseRange(9, 20, 1)->Unit(benchmark::kMillisecond)->ReportAggregatesOnly(true);
 
@@ -265,4 +363,7 @@ BENCHMARK(BM_LIGERO_VERIFIER_STANDARD_BASIS)->DenseRange(9, 20, 1)->Unit(benchma
 
 BENCHMARK_MAIN();
 
-//./libiop/benchmark_ligero --benchmark_repetitions=100 --benchmark_out=cantor_gm.json --benchmark_out_format=json
+// Example: all benchmarks (GM + LCH + cantor::):
+//   ./benchmark_ligero --benchmark_repetitions=100 --benchmark_out=out.json --benchmark_out_format=json
+// Cantor-basis rows only (LCH and cantor_lib):
+//   ./benchmark_ligero --benchmark_filter='BM_LIGERO_(PROVER|VERIFIER)_CANTOR_BASIS_.*'
